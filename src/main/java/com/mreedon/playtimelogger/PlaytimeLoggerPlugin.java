@@ -34,6 +34,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -43,6 +44,7 @@ import net.runelite.api.GameState;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.client.RuneLite;
 import net.runelite.client.eventbus.Subscribe;
+import net.runelite.client.events.ClientShutdown;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 
@@ -78,9 +80,26 @@ public class PlaytimeLoggerPlugin extends Plugin
 	@Override
 	protected void shutDown()
 	{
-		// The client is closing while logged in; there will be no further
-		// GameStateChanged event, so close out the open session here.
+		// Fires when this plugin is individually disabled while the client
+		// keeps running. Fire-and-forget is fine here; the shared executor
+		// isn't going anywhere.
 		closeSession(Instant.now());
+	}
+
+	@Subscribe
+	public void onClientShutdown(ClientShutdown event)
+	{
+		// Fires when the whole client is closing. shutDown() above is NOT
+		// called in this case -- PluginManager.stopPlugin() is only invoked
+		// when a plugin is toggled off, not on client exit. The process is
+		// about to exit, so the write must be registered with the event via
+		// waitFor() or it may never happen; RuneLite gives registered
+		// futures up to 10s to finish before it force-exits.
+		Future<?> pendingWrite = closeSession(Instant.now());
+		if (pendingWrite != null)
+		{
+			event.waitFor(pendingWrite);
+		}
 	}
 
 	@Subscribe
@@ -110,11 +129,11 @@ public class PlaytimeLoggerPlugin extends Plugin
 		}
 	}
 
-	private void closeSession(Instant end)
+	private Future<?> closeSession(Instant end)
 	{
 		if (sessionStart == null)
 		{
-			return;
+			return null;
 		}
 
 		Instant start = sessionStart;
@@ -127,10 +146,10 @@ public class PlaytimeLoggerPlugin extends Plugin
 		Duration played = Duration.between(start, end);
 		if (played.isNegative() || played.isZero())
 		{
-			return;
+			return null;
 		}
 
-		executor.execute(() -> writeSession(start, end, played, hops, sessionWorlds));
+		return executor.submit(() -> writeSession(start, end, played, hops, sessionWorlds));
 	}
 
 	private void writeSession(Instant start, Instant end, Duration played, int hops, List<Integer> sessionWorlds)
