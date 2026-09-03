@@ -75,10 +75,24 @@ public class PlaytimeLoggerPlugin extends Plugin
 	@Override
 	protected void startUp()
 	{
-		sessionStart = null;
 		hopCount = 0;
 		worlds = new ArrayList<>();
 		playerName = null;
+
+		if (client.getGameState() == GameState.LOGGED_IN)
+		{
+			// The plugin can (re)start while already logged in -- e.g.
+			// toggled off and back on. There's no earlier LOGGED_IN
+			// transition left to catch in that case, so treat "now" as the
+			// session start rather than silently dropping the remainder of
+			// an already-open session until the next real login.
+			sessionStart = Instant.now();
+			worlds.add(client.getWorld());
+		}
+		else
+		{
+			sessionStart = null;
+		}
 	}
 
 	@Override
