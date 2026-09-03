@@ -43,6 +43,7 @@ import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.Player;
 import net.runelite.api.events.GameStateChanged;
+import net.runelite.api.events.GameTick;
 import net.runelite.client.RuneLite;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ClientShutdown;
@@ -69,6 +70,7 @@ public class PlaytimeLoggerPlugin extends Plugin
 	private Instant sessionStart;
 	private int hopCount;
 	private List<Integer> worlds;
+	private String playerName;
 
 	@Override
 	protected void startUp()
@@ -76,6 +78,7 @@ public class PlaytimeLoggerPlugin extends Plugin
 		sessionStart = null;
 		hopCount = 0;
 		worlds = new ArrayList<>();
+		playerName = null;
 	}
 
 	@Override
@@ -117,6 +120,7 @@ public class PlaytimeLoggerPlugin extends Plugin
 				sessionStart = Instant.now();
 				hopCount = 0;
 				worlds = new ArrayList<>();
+				playerName = null;
 			}
 			worlds.add(client.getWorld());
 		}
@@ -130,6 +134,25 @@ public class PlaytimeLoggerPlugin extends Plugin
 		}
 	}
 
+	@Subscribe
+	public void onGameTick(GameTick event)
+	{
+		// getLocalPlayer() is unset for a moment around login, and observed
+		// to already be cleared again by the time LOGIN_SCREEN fires on
+		// logout -- there's no single state-change event where it's
+		// reliably available. A tick only runs while actually logged in and
+		// ticking, so this is the safe place to grab it; captured once per
+		// session and cached, since the account can't change mid-session.
+		if (sessionStart != null && playerName == null)
+		{
+			Player localPlayer = client.getLocalPlayer();
+			if (localPlayer != null && localPlayer.getName() != null)
+			{
+				playerName = localPlayer.getName();
+			}
+		}
+	}
+
 	private Future<?> closeSession(Instant end)
 	{
 		if (sessionStart == null)
@@ -140,10 +163,11 @@ public class PlaytimeLoggerPlugin extends Plugin
 		Instant start = sessionStart;
 		int hops = hopCount;
 		List<Integer> sessionWorlds = worlds;
-		String player = playerName();
+		String player = playerName == null ? "unknown" : playerName;
 		sessionStart = null;
 		hopCount = 0;
 		worlds = new ArrayList<>();
+		playerName = null;
 
 		Duration played = Duration.between(start, end);
 		if (played.isNegative() || played.isZero())
@@ -152,20 +176,6 @@ public class PlaytimeLoggerPlugin extends Plugin
 		}
 
 		return executor.submit(() -> writeSession(start, end, played, hops, sessionWorlds, player));
-	}
-
-	private String playerName()
-	{
-		// The player can only be logged out here if they were logged in a
-		// moment ago, so this should always be non-null in practice --
-		// checked anyway since a null local player is a known possibility
-		// elsewhere in the client during state transitions.
-		Player localPlayer = client.getLocalPlayer();
-		if (localPlayer == null || localPlayer.getName() == null)
-		{
-			return "unknown";
-		}
-		return localPlayer.getName();
 	}
 
 	private void writeSession(Instant start, Instant end, Duration played, int hops, List<Integer> sessionWorlds, String player)
