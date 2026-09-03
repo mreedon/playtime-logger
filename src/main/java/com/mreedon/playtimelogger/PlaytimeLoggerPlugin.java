@@ -218,7 +218,7 @@ public class PlaytimeLoggerPlugin extends Plugin
 			played.getSeconds() + "," +
 			hops + "," +
 			worldList + "," +
-			player + System.lineSeparator();
+			csvField(player) + System.lineSeparator();
 
 		try
 		{
@@ -238,5 +238,18 @@ public class PlaytimeLoggerPlugin extends Plugin
 		{
 			log.warn("Failed to write playtime session", e);
 		}
+	}
+
+	// OSRS display names can't legally contain a comma, quote, or newline, so
+	// this never actually triggers today -- but that's an assumption owned
+	// by Jagex's naming rules, not this plugin, and RFC 4180 quoting is
+	// cheap enough not to lean on it.
+	private static String csvField(String value)
+	{
+		if (value.indexOf(',') < 0 && value.indexOf('"') < 0 && value.indexOf('\n') < 0 && value.indexOf('\r') < 0)
+		{
+			return value;
+		}
+		return '"' + value.replace("\"", "\"\"") + '"';
 	}
 }
