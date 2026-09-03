@@ -43,8 +43,8 @@ import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.Player;
 import net.runelite.api.events.GameStateChanged;
-import net.runelite.api.events.GameTick;
 import net.runelite.client.RuneLite;
+import net.runelite.client.callback.ClientThread;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ClientShutdown;
 import net.runelite.client.plugins.Plugin;
@@ -63,6 +63,9 @@ public class PlaytimeLoggerPlugin extends Plugin
 
 	@Inject
 	private Client client;
+
+	@Inject
+	private ClientThread clientThread;
 
 	@Inject
 	private ScheduledExecutorService executor;
@@ -88,6 +91,7 @@ public class PlaytimeLoggerPlugin extends Plugin
 			// an already-open session until the next real login.
 			sessionStart = Instant.now();
 			worlds.add(client.getWorld());
+			capturePlayerName();
 		}
 		else
 		{
@@ -135,6 +139,7 @@ public class PlaytimeLoggerPlugin extends Plugin
 				hopCount = 0;
 				worlds = new ArrayList<>();
 				playerName = null;
+				capturePlayerName();
 			}
 			worlds.add(client.getWorld());
 		}
@@ -148,23 +153,33 @@ public class PlaytimeLoggerPlugin extends Plugin
 		}
 	}
 
-	@Subscribe
-	public void onGameTick(GameTick event)
+	private void capturePlayerName()
 	{
 		// getLocalPlayer() is unset for a moment around login, and observed
 		// to already be cleared again by the time LOGIN_SCREEN fires on
 		// logout -- there's no single state-change event where it's
-		// reliably available. A tick only runs while actually logged in and
-		// ticking, so this is the safe place to grab it; captured once per
-		// session and cached, since the account can't change mid-session.
-		if (sessionStart != null && playerName == null)
+		// reliably available. invokeLater retries on the client thread
+		// until the supplier returns true, which is the standard way to
+		// wait out that gap; captured once per session and cached, since
+		// the account can't change mid-session.
+		clientThread.invokeLater(() ->
 		{
+			if (client.getGameState().getState() < GameState.LOGIN_SCREEN.getState())
+			{
+				return false;
+			}
 			Player localPlayer = client.getLocalPlayer();
-			if (localPlayer != null && localPlayer.getName() != null)
+			if (localPlayer == null)
+			{
+				return false;
+			}
+			if (localPlayer.getName() != null)
 			{
 				playerName = localPlayer.getName();
+				return true;
 			}
-		}
+			return false;
+		});
 	}
 
 	private Future<?> closeSession(Instant end)
