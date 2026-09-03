@@ -32,9 +32,13 @@ import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.client.RuneLite;
@@ -51,19 +55,24 @@ public class PlaytimeLoggerPlugin extends Plugin
 {
 	private static final Path LOG_DIR = RuneLite.RUNELITE_DIR.toPath().resolve("playtime-logger");
 	private static final Path LOG_FILE = LOG_DIR.resolve("sessions.csv");
-	private static final String CSV_HEADER = "login,logout,duration_seconds,hops" + System.lineSeparator();
+	private static final String CSV_HEADER = "login,logout,duration_seconds,hops,worlds" + System.lineSeparator();
+
+	@Inject
+	private Client client;
 
 	@Inject
 	private ScheduledExecutorService executor;
 
 	private Instant sessionStart;
 	private int hopCount;
+	private List<Integer> worlds;
 
 	@Override
 	protected void startUp()
 	{
 		sessionStart = null;
 		hopCount = 0;
+		worlds = new ArrayList<>();
 	}
 
 	@Override
@@ -79,12 +88,17 @@ public class PlaytimeLoggerPlugin extends Plugin
 	{
 		GameState state = event.getGameState();
 
-		if (state == GameState.LOGGED_IN && sessionStart == null)
+		if (state == GameState.LOGGED_IN)
 		{
 			// Guarded on sessionStart == null so a world hop (which also
 			// passes through LOGGED_IN) doesn't split one play session in two.
-			sessionStart = Instant.now();
-			hopCount = 0;
+			if (sessionStart == null)
+			{
+				sessionStart = Instant.now();
+				hopCount = 0;
+				worlds = new ArrayList<>();
+			}
+			worlds.add(client.getWorld());
 		}
 		else if (state == GameState.HOPPING && sessionStart != null)
 		{
@@ -105,8 +119,10 @@ public class PlaytimeLoggerPlugin extends Plugin
 
 		Instant start = sessionStart;
 		int hops = hopCount;
+		List<Integer> sessionWorlds = worlds;
 		sessionStart = null;
 		hopCount = 0;
+		worlds = new ArrayList<>();
 
 		Duration played = Duration.between(start, end);
 		if (played.isNegative() || played.isZero())
@@ -114,15 +130,20 @@ public class PlaytimeLoggerPlugin extends Plugin
 			return;
 		}
 
-		executor.execute(() -> writeSession(start, end, played, hops));
+		executor.execute(() -> writeSession(start, end, played, hops, sessionWorlds));
 	}
 
-	private void writeSession(Instant start, Instant end, Duration played, int hops)
+	private void writeSession(Instant start, Instant end, Duration played, int hops, List<Integer> sessionWorlds)
 	{
+		String worldList = sessionWorlds.stream()
+			.map(String::valueOf)
+			.collect(Collectors.joining(";"));
+
 		String line = start.truncatedTo(ChronoUnit.SECONDS) + "," +
 			end.truncatedTo(ChronoUnit.SECONDS) + "," +
 			played.getSeconds() + "," +
-			hops + System.lineSeparator();
+			hops + "," +
+			worldList + System.lineSeparator();
 
 		try
 		{
