@@ -15,7 +15,12 @@ played-minutes counter, but real login-to-logout wall-clock duration.
   The number of hops during the session, and which worlds you were on, are
   recorded instead.
 - If the client is closed while still logged in, the open session is closed
-  out at that moment instead of being lost.
+  out at that moment instead of being lost (via RuneLite's `ClientShutdown`
+  event — `shutDown()` alone is not enough, since it isn't called when the
+  whole client exits, only when this plugin is individually disabled).
+- If the plugin is disabled and re-enabled while already logged in, a new
+  session starts from the moment it's re-enabled rather than silently
+  missing everything until the next real login.
 
 Each completed session appends one line to:
 
