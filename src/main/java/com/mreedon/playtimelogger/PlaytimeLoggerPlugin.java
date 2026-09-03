@@ -41,6 +41,7 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
+import net.runelite.api.Player;
 import net.runelite.api.events.GameStateChanged;
 import net.runelite.client.RuneLite;
 import net.runelite.client.eventbus.Subscribe;
@@ -57,7 +58,7 @@ public class PlaytimeLoggerPlugin extends Plugin
 {
 	private static final Path LOG_DIR = RuneLite.RUNELITE_DIR.toPath().resolve("playtime-logger");
 	private static final Path LOG_FILE = LOG_DIR.resolve("sessions.csv");
-	private static final String CSV_HEADER = "login,logout,duration_seconds,hops,worlds" + System.lineSeparator();
+	private static final String CSV_HEADER = "login,logout,duration_seconds,hops,worlds,player" + System.lineSeparator();
 
 	@Inject
 	private Client client;
@@ -139,6 +140,7 @@ public class PlaytimeLoggerPlugin extends Plugin
 		Instant start = sessionStart;
 		int hops = hopCount;
 		List<Integer> sessionWorlds = worlds;
+		String player = playerName();
 		sessionStart = null;
 		hopCount = 0;
 		worlds = new ArrayList<>();
@@ -149,10 +151,24 @@ public class PlaytimeLoggerPlugin extends Plugin
 			return null;
 		}
 
-		return executor.submit(() -> writeSession(start, end, played, hops, sessionWorlds));
+		return executor.submit(() -> writeSession(start, end, played, hops, sessionWorlds, player));
 	}
 
-	private void writeSession(Instant start, Instant end, Duration played, int hops, List<Integer> sessionWorlds)
+	private String playerName()
+	{
+		// The player can only be logged out here if they were logged in a
+		// moment ago, so this should always be non-null in practice --
+		// checked anyway since a null local player is a known possibility
+		// elsewhere in the client during state transitions.
+		Player localPlayer = client.getLocalPlayer();
+		if (localPlayer == null || localPlayer.getName() == null)
+		{
+			return "unknown";
+		}
+		return localPlayer.getName();
+	}
+
+	private void writeSession(Instant start, Instant end, Duration played, int hops, List<Integer> sessionWorlds, String player)
 	{
 		String worldList = sessionWorlds.stream()
 			.map(String::valueOf)
@@ -162,7 +178,8 @@ public class PlaytimeLoggerPlugin extends Plugin
 			end.truncatedTo(ChronoUnit.SECONDS) + "," +
 			played.getSeconds() + "," +
 			hops + "," +
-			worldList + System.lineSeparator();
+			worldList + "," +
+			player + System.lineSeparator();
 
 		try
 		{

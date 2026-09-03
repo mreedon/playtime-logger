@@ -23,11 +23,14 @@ Each completed session appends one line to:
 ~/.runelite/playtime-logger/sessions.csv
 ```
 
-with columns `login,logout,duration_seconds,hops,worlds` (timestamps in UTC,
-truncated to the second; `hops` is how many world hops happened during that
-session; `worlds` is the semicolon-separated list of world numbers visited,
-in order, e.g. `450;451;301`). The file is append-only — no rotation, since
-a session-per-line log grows by well under 1MB/year even with daily play.
+with columns `login,logout,duration_seconds,hops,worlds,player` (timestamps
+in UTC, truncated to the second; `hops` is how many world hops happened
+during that session; `worlds` is the semicolon-separated list of world
+numbers visited, in order, e.g. `450;451;301`; `player` is the display name
+of the account that session belongs to, so sessions from different accounts
+on the same PC don't get mixed together). The file is append-only — no
+rotation, since a session-per-line log grows by well under 1MB/year even
+with daily play.
 
 Nothing is sent anywhere; the log never leaves your machine.
 
