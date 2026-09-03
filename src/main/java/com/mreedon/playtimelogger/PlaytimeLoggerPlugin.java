@@ -51,17 +51,19 @@ public class PlaytimeLoggerPlugin extends Plugin
 {
 	private static final Path LOG_DIR = RuneLite.RUNELITE_DIR.toPath().resolve("playtime-logger");
 	private static final Path LOG_FILE = LOG_DIR.resolve("sessions.csv");
-	private static final String CSV_HEADER = "login,logout,duration_seconds" + System.lineSeparator();
+	private static final String CSV_HEADER = "login,logout,duration_seconds,hops" + System.lineSeparator();
 
 	@Inject
 	private ScheduledExecutorService executor;
 
 	private Instant sessionStart;
+	private int hopCount;
 
 	@Override
 	protected void startUp()
 	{
 		sessionStart = null;
+		hopCount = 0;
 	}
 
 	@Override
@@ -82,6 +84,11 @@ public class PlaytimeLoggerPlugin extends Plugin
 			// Guarded on sessionStart == null so a world hop (which also
 			// passes through LOGGED_IN) doesn't split one play session in two.
 			sessionStart = Instant.now();
+			hopCount = 0;
+		}
+		else if (state == GameState.HOPPING && sessionStart != null)
+		{
+			hopCount++;
 		}
 		else if (state == GameState.LOGIN_SCREEN && sessionStart != null)
 		{
@@ -97,7 +104,9 @@ public class PlaytimeLoggerPlugin extends Plugin
 		}
 
 		Instant start = sessionStart;
+		int hops = hopCount;
 		sessionStart = null;
+		hopCount = 0;
 
 		Duration played = Duration.between(start, end);
 		if (played.isNegative() || played.isZero())
@@ -105,14 +114,15 @@ public class PlaytimeLoggerPlugin extends Plugin
 			return;
 		}
 
-		executor.execute(() -> writeSession(start, end, played));
+		executor.execute(() -> writeSession(start, end, played, hops));
 	}
 
-	private void writeSession(Instant start, Instant end, Duration played)
+	private void writeSession(Instant start, Instant end, Duration played, int hops)
 	{
 		String line = start.truncatedTo(ChronoUnit.SECONDS) + "," +
 			end.truncatedTo(ChronoUnit.SECONDS) + "," +
-			played.getSeconds() + System.lineSeparator();
+			played.getSeconds() + "," +
+			hops + System.lineSeparator();
 
 		try
 		{
