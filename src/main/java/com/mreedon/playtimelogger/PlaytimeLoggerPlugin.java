@@ -182,7 +182,12 @@ public class PlaytimeLoggerPlugin extends Plugin
 		});
 	}
 
-	private Future<?> closeSession(Instant end)
+	// onGameStateChanged runs on the client thread; shutDown() and
+	// onClientShutdown() both run on the EDT. Without this, a real logout
+	// landing at the same instant as a plugin disable/client close could
+	// have both threads read sessionStart as non-null before either clears
+	// it, logging the same session twice.
+	private synchronized Future<?> closeSession(Instant end)
 	{
 		if (sessionStart == null)
 		{
