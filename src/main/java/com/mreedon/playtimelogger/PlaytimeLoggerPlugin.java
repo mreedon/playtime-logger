@@ -90,7 +90,7 @@ public class PlaytimeLoggerPlugin extends Plugin
 			// session start rather than silently dropping the remainder of
 			// an already-open session until the next real login.
 			sessionStart = Instant.now();
-			worlds.add(client.getWorld());
+			recordWorld();
 			capturePlayerName();
 		}
 		else
@@ -141,7 +141,7 @@ public class PlaytimeLoggerPlugin extends Plugin
 				playerName = null;
 				capturePlayerName();
 			}
-			worlds.add(client.getWorld());
+			recordWorld();
 		}
 		else if (state == GameState.HOPPING && sessionStart != null)
 		{
@@ -150,6 +150,18 @@ public class PlaytimeLoggerPlugin extends Plugin
 		else if (state == GameState.LOGIN_SCREEN && sessionStart != null)
 		{
 			closeSession(Instant.now());
+		}
+	}
+
+	// LOGGED_IN also fires when the client reconnects after a dropped
+	// connection, on the same world. Only a change of world is worth a
+	// column entry; a reconnect is not a hop and should not look like one.
+	private void recordWorld()
+	{
+		int world = client.getWorld();
+		if (worlds.isEmpty() || worlds.get(worlds.size() - 1) != world)
+		{
+			worlds.add(world);
 		}
 	}
 
@@ -194,7 +206,11 @@ public class PlaytimeLoggerPlugin extends Plugin
 			return null;
 		}
 
-		Instant start = sessionStart;
+		// The row prints whole seconds, so measure the duration from the same
+		// whole-second instants it prints; otherwise the sub-second parts of
+		// login and logout can leave logout - login one second off the column.
+		Instant start = sessionStart.truncatedTo(ChronoUnit.SECONDS);
+		Instant stop = end.truncatedTo(ChronoUnit.SECONDS);
 		int hops = hopCount;
 		List<Integer> sessionWorlds = worlds;
 		String player = playerName == null ? "unknown" : playerName;
@@ -203,13 +219,13 @@ public class PlaytimeLoggerPlugin extends Plugin
 		worlds = new ArrayList<>();
 		playerName = null;
 
-		Duration played = Duration.between(start, end);
+		Duration played = Duration.between(start, stop);
 		if (played.isNegative() || played.isZero())
 		{
 			return null;
 		}
 
-		return executor.submit(() -> writeSession(start, end, played, hops, sessionWorlds, player));
+		return executor.submit(() -> writeSession(start, stop, played, hops, sessionWorlds, player));
 	}
 
 	private void writeSession(Instant start, Instant end, Duration played, int hops, List<Integer> sessionWorlds, String player)
@@ -218,8 +234,8 @@ public class PlaytimeLoggerPlugin extends Plugin
 			.map(String::valueOf)
 			.collect(Collectors.joining(";"));
 
-		String line = start.truncatedTo(ChronoUnit.SECONDS) + "," +
-			end.truncatedTo(ChronoUnit.SECONDS) + "," +
+		String line = start + "," +
+			end + "," +
 			played.getSeconds() + "," +
 			hops + "," +
 			worldList + "," +

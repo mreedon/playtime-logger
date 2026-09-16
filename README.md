@@ -29,9 +29,11 @@ Each completed session appends one line to:
 ```
 
 with columns `login,logout,duration_seconds,hops,worlds,player` (timestamps
-in UTC, truncated to the second; `hops` is how many world hops happened
-during that session; `worlds` is the semicolon-separated list of world
-numbers visited, in order, e.g. `450;451;301`; `player` is the display name
+in UTC, truncated to the second, and `duration_seconds` is exactly `logout`
+minus `login` as printed; `hops` is how many world hops happened during that
+session; `worlds` is the semicolon-separated list of world numbers visited, in
+order, e.g. `450;451;301`, with a reconnect to the same world adding nothing;
+`player` is the display name
 of the account that session belongs to, so sessions from different accounts
 on the same PC don't get mixed together). The file is append-only — no
 rotation, since a session-per-line log grows by well under 1MB/year even
