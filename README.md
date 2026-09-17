@@ -28,9 +28,7 @@ Each completed session appends one line to:
 ~/.runelite/plugin-data/playtime-logger/sessions.csv
 ```
 
-(Versions before 2026-09 wrote to `~/.runelite/playtime-logger/sessions.csv`.
-The plugin now uses RuneLite's `Filepath` API, and on first launch it moves
-that old folder, history included, to the new location.)
+(on Windows, `%USERPROFILE%\.runelite\plugin-data\playtime-logger\sessions.csv`)
 
 with columns `login,logout,duration_seconds,hops,worlds,player` (timestamps
 in UTC, truncated to the second, and `duration_seconds` is exactly `logout`
@@ -44,6 +42,27 @@ rotation, since a session-per-line log grows by well under 1MB/year even
 with daily play.
 
 Nothing is sent anywhere; the log never leaves your machine.
+
+## Updating from an older version: the file moved
+
+Versions before September 2026 wrote to
+`~/.runelite/playtime-logger/sessions.csv`. The plugin now uses RuneLite's
+`Filepath` API, which keeps every plugin's files under
+`~/.runelite/plugin-data/`. You don't need to do anything: the first time the
+updated plugin starts, it moves the old `playtime-logger` folder, history
+included, to the new location and keeps appending to the same file. If you
+have a script or spreadsheet pointed at the old path, point it at the new one.
+
+If an old `~/.runelite/playtime-logger` folder shows up again after the
+update, a second client was still running the old version and logged a
+session there. Restart that client, paste those rows (not the header line)
+into the new `sessions.csv`, and delete the old folder. The plugin only moves
+the folder once, so it won't pick those rows up on its own.
+
+If the old folder is still there and no new sessions are being logged, the
+move is being blocked, usually because the old `sessions.csv` is open in
+another program (Excel locks it on Windows). Close it and restart the client.
+Your history is safe in the old folder in the meantime.
 
 ## Why not the built-in played-time counter?
 
