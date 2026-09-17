@@ -25,9 +25,6 @@
 package com.mreedon.playtimelogger;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
@@ -43,22 +40,25 @@ import net.runelite.api.Client;
 import net.runelite.api.GameState;
 import net.runelite.api.Player;
 import net.runelite.api.events.GameStateChanged;
-import net.runelite.client.RuneLite;
 import net.runelite.client.callback.ClientThread;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.events.ClientShutdown;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.util.Filepath;
 
 @Slf4j
 @PluginDescriptor(
 	name = "Playtime Logger",
-	description = "Logs real login/logout session times to a local file"
+	description = "Logs real login/logout session times to a local file",
+	internalName = "playtime-logger",
+	// Versions before the Filepath switch wrote to ~/.runelite/playtime-logger;
+	// getPluginDirectory() moves that folder into plugin-data on first call.
+	legacyDataDirectory = "playtime-logger"
 )
 public class PlaytimeLoggerPlugin extends Plugin
 {
-	private static final Path LOG_DIR = RuneLite.RUNELITE_DIR.toPath().resolve("playtime-logger");
-	private static final Path LOG_FILE = LOG_DIR.resolve("sessions.csv");
+	private static final String LOG_FILE_NAME = "sessions.csv";
 	private static final String CSV_HEADER = "login,logout,duration_seconds,hops,worlds,player" + System.lineSeparator();
 
 	@Inject
@@ -78,6 +78,12 @@ public class PlaytimeLoggerPlugin extends Plugin
 	@Override
 	protected void startUp()
 	{
+		// Do the one-time legacy folder move at launch, off the client thread,
+		// rather than leaving it to the first logout. Several clients started
+		// together can race the move; that costs nothing here, since no row is
+		// being written, and the losers find it already done on their next call.
+		executor.submit(this::migrateDataDirectory);
+
 		hopCount = 0;
 		worlds = new ArrayList<>();
 		playerName = null;
@@ -243,21 +249,33 @@ public class PlaytimeLoggerPlugin extends Plugin
 
 		try
 		{
-			Files.createDirectories(LOG_DIR);
+			Filepath dir = getPluginDirectory();
+			dir.createDirectories();
+			Filepath logFile = dir.joinSegment(LOG_FILE_NAME);
 
-			boolean isNewFile = !Files.exists(LOG_FILE);
+			boolean isNewFile = !logFile.exists();
 			if (isNewFile)
 			{
-				Files.write(LOG_FILE, CSV_HEADER.getBytes(StandardCharsets.UTF_8),
-					StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+				logFile.write(CSV_HEADER, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
 			}
 
-			Files.write(LOG_FILE, line.getBytes(StandardCharsets.UTF_8),
-				StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+			logFile.write(line, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
 		}
 		catch (IOException e)
 		{
 			log.warn("Failed to write playtime session", e);
+		}
+	}
+
+	private void migrateDataDirectory()
+	{
+		try
+		{
+			getPluginDirectory();
+		}
+		catch (IOException e)
+		{
+			log.warn("Failed to move the legacy playtime-logger folder into plugin-data", e);
 		}
 	}
 

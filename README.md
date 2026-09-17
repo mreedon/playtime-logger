@@ -25,8 +25,12 @@ played-minutes counter, but real login-to-logout wall-clock duration.
 Each completed session appends one line to:
 
 ```
-~/.runelite/playtime-logger/sessions.csv
+~/.runelite/plugin-data/playtime-logger/sessions.csv
 ```
+
+(Versions before 2026-09 wrote to `~/.runelite/playtime-logger/sessions.csv`.
+The plugin now uses RuneLite's `Filepath` API, and on first launch it moves
+that old folder, history included, to the new location.)
 
 with columns `login,logout,duration_seconds,hops,worlds,player` (timestamps
 in UTC, truncated to the second, and `duration_seconds` is exactly `logout`
